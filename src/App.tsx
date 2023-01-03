@@ -6,8 +6,10 @@ import {
   TextInput,
   Button,
   ThemeProvider,
-  NetworkIcon,
   vars,
+  useTheme,
+  Switch,
+  SunIcon,
 } from "@0xsequence/design-system";
 import {
   Page,
@@ -22,6 +24,9 @@ import {
 } from "@0xsequence/metadata";
 import { ChainId } from "@0xsequence/network";
 
+import moon from "./moon.svg";
+import "./App.css";
+
 type ContractData =
   | { state: "empty" }
   | { state: "fetching" }
@@ -34,6 +39,7 @@ type ContractData =
   | { state: "error"; error: string };
 
 export function App() {
+  const { theme, setTheme } = useTheme();
   const [network, setNetwork] = useState<keyof typeof indexers>(
     ChainId.POLYGON
   );
@@ -57,38 +63,40 @@ export function App() {
     const metaClient = new SequenceMetadataClient();
     const indexerClient = new SequenceIndexerClient(indexers[network]);
 
+    const getContractInfo = metaClient
+      .getContractInfo({
+        chainID: `${network}`,
+        contractAddress: contract.address,
+      })
+      .then((m) => m.contractInfo);
+
+    const getTokenInfo =
+      contract.tokenID !== undefined && isValidNumber(contract.tokenID)
+        ? metaClient
+            .getTokenMetadata({
+              tokenIDs: [contract.tokenID],
+              chainID: `${network}`,
+              contractAddress: contract.address,
+            })
+            .then((m) => m.tokenMetadata[0])
+        : undefined;
+
+    const getBalances = fetchMultiplePages(
+      (page) =>
+        indexerClient.getTokenBalances({
+          contractAddress: contract.address,
+          accountAddress: "0x831dE831A64405aF965C67d6E0De2F9876fa2d99",
+          page: {
+            page,
+          },
+        }),
+      "balances"
+    );
+
     let cancelled = false;
+
     (async () => {
       try {
-        const getContractInfo = metaClient
-          .getContractInfo({
-            chainID: `${network}`,
-            contractAddress: contract.address,
-          })
-          .then((m) => m.contractInfo);
-
-        const getTokenInfo = contract.tokenID
-          ? metaClient
-              .getTokenMetadata({
-                tokenIDs: [contract.tokenID],
-                chainID: `${network}`,
-                contractAddress: contract.address,
-              })
-              .then((m) => m.tokenMetadata[0])
-          : undefined;
-
-        const getBalances = fetchMultiplePages(
-          (page) =>
-            indexerClient.getTokenBalances({
-              contractAddress: contract.address,
-              accountAddress: "0x831dE831A64405aF965C67d6E0De2F9876fa2d99",
-              page: {
-                page,
-              },
-            }),
-          "balances"
-        );
-
         const [contractInfo, balances, tokenInfo] = await Promise.all([
           getContractInfo,
           getBalances,
@@ -128,11 +136,32 @@ export function App() {
   return (
     <ThemeProvider>
       <Box width="vw" height="vh" padding="8">
-        <Text variant="xlarge">
-          📸 Download a CSV snapshot of any token's holders 😊
-        </Text>
+        <Box flexDirection="row" justifyContent="space-between">
+          <Text variant="xlarge">
+            📸 Download a CSV snapshot of any token's holders 😊
+          </Text>
+          <Box position="relative" height="min">
+            <Switch
+              checked={theme === "dark"}
+              onCheckedChange={(val) => setTheme(val ? "dark" : "light")}
+            />
+            <Box
+              position="absolute"
+              top="0"
+              bottom="0"
+              left={theme === "dark" ? "0.5" : undefined}
+              right={theme === "light" ? "0.5" : undefined}
+              pointerEvents="none"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+            >
+              {theme === "light" ? <SunIcon /> : <img src={moon} />}
+            </Box>
+          </Box>
+        </Box>
 
-        <Box padding="8" gap="10">
+        <Box paddingY="8" gap="10">
           <Box
             style={{
               width: "160px",
@@ -158,7 +187,8 @@ export function App() {
               width="full"
               labelLocation="top"
               name="addressPicker"
-              label="Enter any contract address"
+              label="Enter a contract address"
+              placeholder="0x631998e91476DA5B870D741192fc5Cbc55F5a52E"
               description={
                 "error" in contractData ? contractData.error : undefined
               }
@@ -173,17 +203,21 @@ export function App() {
             />
           </Box>
         </Box>
-
-        {(contract.tokenID ||
+        {(contract.tokenID !== undefined ||
           (contractData.state === "ok" &&
             contractData.contractInfo.type === "ERC1155")) && (
-          <Box width="full" padding={"8"}>
+          <Box width="full" paddingY={"8"}>
             <TextInput
               width="full"
               labelLocation="top"
               name="addressPicker"
               label="Optionally, enter a specific token ID"
-              description={""}
+              description={
+                !isValidNumber(contract.tokenID || "0")
+                  ? "Invalid Token ID"
+                  : undefined
+              }
+              placeholder="65590"
               onChange={(el) =>
                 setContract({
                   address: contract.address,
@@ -194,30 +228,39 @@ export function App() {
             />
           </Box>
         )}
-
         {contractData.state === "ok" && (
-          <Box padding={"8"} flexDirection="column" gap="8">
+          <Box
+            padding={"8"}
+            flexDirection="column"
+            gap="8"
+            style={{
+              opacity: 0,
+              animation: "fadeIn 0.5s forwards",
+            }}
+          >
             <Text>
               <Text color="info">
                 {contractData.contractInfo.type || "Unknown ERC token type"}
               </Text>{" "}
               contract{" "}
-              <Text color="positive">
+              <Text color="positive" style={{ overflowWrap: "break-word" }}>
                 {contractData.contractInfo.name ||
                   contractData.contractInfo.address}
               </Text>{" "}
               on{" "}
               <Text
                 style={{
-                  color: supportedChains.find((c) => c.id === network)?.color
-                    .light,
+                  color: supportedChains.find((c) => c.id === network)?.color[
+                    theme === "dark" ? "light" : "dark"
+                  ],
                 }}
               >
                 {supportedChains.find((c) => c.id === network)?.name}
               </Text>{" "}
               has {contractData.balances.length} unique holder
               {contractData.balances.length === 1 ? "" : "s"}
-              {contract.tokenID ? (
+              {contract.tokenID !== undefined &&
+              isValidNumber(contract.tokenID) ? (
                 <>
                   {" "}
                   of token{" "}
@@ -318,4 +361,8 @@ async function fetchMultiplePages<T, K extends string>(
     }
   }
   return allItems;
+}
+
+function isValidNumber(number: string): boolean {
+  return `${Number.parseInt(number)}` === number;
 }
