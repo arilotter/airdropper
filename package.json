@@ -9,9 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "0xsequence": "^0.43.7",
     "@0xsequence/design-system": "^0.1.76",
     "@0xsequence/indexer": "^0.43.7",
+    "@0xsequence/metadata": "^0.43.7",
     "@0xsequence/network": "^0.43.7",
     "ethers": "^5.7.2",
     "framer-motion": "^8.1.3",
